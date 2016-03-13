@@ -1,0 +1,100 @@
+#
+#
+#
+
+DESCRIPTION="Manage graphics graphics drivers used"
+MAINTAINER="piotrekrogowski@gmail.com"
+VERSION=20160313
+
+CONFIG_SETS="${EROOT}/etc/X11/xorg.conf.alt"
+CONFIG_FILE="${EROOT}/etc/X11/optimus.conf"
+
+inherit config
+
+get_config_sets() {
+    local set_dir
+    for set_dir in "${CONFIG_SETS}"/*;do
+        [[ -d ${set_dir} ]] && basename "${set_dir}"
+    done
+}
+
+set_symlink() {
+    local set_dir="${CONFIG_SETS}/$1"
+    local source="${set_dir}/$2"
+    local target="${EROOT}/$3"
+    [[ -f "${source}" ]] && ln -s "${source}" "${target}"
+}
+
+remove_symlink() {
+    local target="${EROOT}/$1"
+    [[ -e "${target}" ]] || return
+	[[ -L "${target}" ]] || die "Target \"${target}\" isn't a symlink"
+    rm ${target}
+}
+
+get_current_set() {
+    load_config "${CONFIG_FILE}" GRAPHICS_CONFIGURATION
+}
+
+### show action ###
+
+describe_show() {
+    echo "Show the current selected driver configuration"
+}
+
+do_show() {
+    local current=$(get_current_set)
+    write_list_start "Current graphic configuration:"
+    if [[ -n "${current}" ]];then
+        write_kv_list_entry "${current}"
+    else
+        write_kv_list_entry "(unknown)"
+    fi
+}
+
+### list action ###
+
+describe_list() {
+    echo "List available configurations"
+}
+
+do_list() {
+    local i sets=( $(get_config_sets) )
+	local current=$(get_current_set)
+
+	write_list_start "Available configurations:"
+	for (( i = 0; i < ${#sets[@]}; i++ )); do
+	    [[ ${sets[i]} = "${current}" ]] && sets[i]=$(highlight_marker "${sets[i]}")
+	done
+
+	write_numbered_list -m "(nothing found)" "${sets[@]}"
+}
+
+### set action ###
+
+describe_set() {
+    echo "Change current graphics configuration"
+}
+
+do_set() {
+    [[ -z $1 ]] && die -q "Specify configuration to set"
+	[[ $# -gt 1 ]] && die -q "Too many parameters"
+
+	local new_set="$1"
+
+	if is_number "$1";then
+	    local sets=( $(get_config_sets) )
+		new_set=${sets[$1-1]}
+	fi
+
+	has "${new_set}" "${sets[@]}" || die "Invalid configuration"
+
+	remove_symlink etc/X11/xorg.conf
+	remove_symlink etc/modprobe.d/graphics.conf
+
+	set_symlink "${new_set}" xorg.conf etc/X11/xorg.conf
+	set_symlink "${new_set}" modprobe.conf etc/modprobe.d/graphics.conf
+    store_config "${CONFIG_FILE}" GRAPHICS_CONFIGURATION "${new_set}"
+}
+
+# vim: set ft=eselect :
